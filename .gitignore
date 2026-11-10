@@ -6,5 +6,6 @@ audit_log.jsonl
 .venv/
 cache/
 check_payout.py
+HANDOFF.md
 
 

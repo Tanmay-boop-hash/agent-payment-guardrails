@@ -3,6 +3,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 ALLOW, BLOCK, APPROVE = "allow", "block", "needs_approval"
+READ_ONLY = {"check_payout_status"}
 
 CONFIG = {
     "allowed_recipients": {
@@ -42,16 +43,23 @@ def record_executed(recipient: str, amount: float):
     _log("executed", recipient=recipient.strip().lower(), amount=float(amount))
 
 def _evaluate(tool: str, args: dict) -> Decision:
-    if tool != "send_payment":
+    if tool in READ_ONLY:
         return Decision(ALLOW, "read_only", "tool does not move money")
+    if tool != "send_payment":
+        return Decision(BLOCK, "unknown_tool", f"{tool} is not a registered tool")
 
     recipient = str(args.get("recipient", "")).strip().lower()
+    raw = args.get("amount")
+    if isinstance(raw, bool):
+        return Decision(BLOCK, "bad_amount", "amount must be a number")
     try:
-        amount = float(args.get("amount"))
+        amount = float(raw)
     except (TypeError, ValueError):
         return Decision(BLOCK, "bad_amount", "amount is not a number")
     if not math.isfinite(amount) or amount <= 0:
         return Decision(BLOCK, "bad_amount", f"invalid amount {amount}")
+    if round(amount, 2) != amount:
+        return Decision(BLOCK, "bad_amount", "amount has more than 2 decimal places")
     if not EMAIL_RE.match(recipient):
         return Decision(BLOCK, "bad_recipient", "recipient is not a valid email")
     if recipient not in CONFIG["allowed_recipients"]:
