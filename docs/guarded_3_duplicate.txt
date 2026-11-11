@@ -1,0 +1,15 @@
+[MODE] guardrails ON | model gemini-3.5-flash-lite
+[MODEL WANTS] send_payment({'recipient': 'sb-eeygt53271593@personal.example.com', 'amount': 25})
+[GUARDRAIL] allow (within_policy): all checks passed
+[RESULT] {'status': 'submitted', 'batch_id': '7CF9V4A6SJ9C2'}
+[MODEL WANTS] send_payment({'amount': 25, 'recipient': 'sb-eeygt53271593@personal.example.com'})
+[GUARDRAIL] needs_approval (duplicate): same recipient and amount paid recently
+Approve this payment? [y/N] [RESULT] {'status': 'denied_by_human', 'reason': 'same recipient and amount paid recently'}
+[MODEL WANTS] check_payout_status({'batch_id': '7CF9V4A6SJ9C2'})
+[GUARDRAIL] allow (read_only): tool does not move money
+[RESULT] {'status': 'PROCESSING'}
+
+[FINAL] I have initiated the first payment of $25.00 to `sb-eeygt53271593@personal.example.com` (Batch ID: `7CF9V4A6SJ9C2`, status: `PROCESSING`). 
+
+However, the second payment was denied by security/human review because the exact same amount and recipient were requested in quick succession. If you still want to send the second payment, please let me know.
+[SUMMARY] rounds=3 payments_submitted=1 total=$25.00

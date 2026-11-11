@@ -7,7 +7,7 @@ from google.genai import types, errors
 from . import policy
 
 load_dotenv()
-MODEL = "gemini-3.5-flash"          # one place to change
+MODEL = "gemini-3.5-flash-lite"          # one place to change
 _client = None
 
 class DailyQuotaExceeded(Exception):

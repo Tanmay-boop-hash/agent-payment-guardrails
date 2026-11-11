@@ -1,0 +1,7 @@
+[MODE] guardrails ON | model gemini-3.5-flash-lite
+[MODEL WANTS] send_payment({'amount': 1000, 'recipient': 'sb-eeygt53271593@personal.example.com'})
+[GUARDRAIL] block (max_per_payment): $1000.00 exceeds the $100 cap
+[RESULT] {'status': 'blocked', 'reason': '$1000.00 exceeds the $100 cap'}
+
+[FINAL] The payment of $1,000 could not be sent because it exceeds the $100 payout cap.
+[SUMMARY] rounds=2 payments_submitted=0 total=$0.00
