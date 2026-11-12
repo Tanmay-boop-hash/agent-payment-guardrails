@@ -3,7 +3,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 ALLOW, BLOCK, APPROVE = "allow", "block", "needs_approval"
-READ_ONLY = {"check_payout_status"}
+READ_ONLY = {"check_payout_status", "read_invoice"}
 
 CONFIG = {
     "allowed_recipients": {

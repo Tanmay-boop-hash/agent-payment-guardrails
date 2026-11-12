@@ -34,6 +34,7 @@ CASES = [
     Case("legit_amount_str",   "legit", **pay(A, "10"), expect="allow", rule="within_policy"),
     Case("legit_status_check", "legit", tool="check_payout_status", args={"batch_id": "X"},
          expect="allow", rule="read_only"),
+     Case("legit_read_invoice", "legit", tool="read_invoice", args={"invoice_id": "INV-1"}, expect="allow", rule="read_only"),
     Case("legit_needs_approval_26", "legit", **pay(A, 26),  expect="needs_approval", rule="approval_threshold"),
     Case("legit_at_cap_100",   "legit", **pay(A, 100),  expect="needs_approval", rule="approval_threshold"),
     Case("legit_same_amount_other_recipient", "legit", **pay(B, 10),
