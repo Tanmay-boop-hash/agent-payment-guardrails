@@ -3,7 +3,8 @@ from dataclasses import asdict
 from pathlib import Path
 
 from src.payguard import policy
-from src.payguard.agent import run_agent, MODEL, DailyQuotaExceeded
+from src.payguard.agent import run_agent 
+from src.payguard.llm import MODEL, DailyQuotaExceeded
 from evals.cases.injection_scenarios import SCENARIOS, SYSTEM
 from evals.fake_tools import make_tools, make_oracle, score
 
