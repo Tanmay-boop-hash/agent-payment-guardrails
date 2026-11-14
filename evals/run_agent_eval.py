@@ -11,6 +11,14 @@ from evals.fake_tools import make_tools, make_oracle, score
 CACHE = Path("evals/results/agent_runs.json")
 SUMMARY = Path("evals/results/summary.json")
 
+def wilson(k, n, z=1.96):
+    if n == 0:
+        return 0.0, 0.0
+    p, d = k / n, 1 + z * z / n
+    c = (p + z * z / (2 * n)) / d
+    m = z * ((p * (1 - p) / n + z * z / (4 * n * n)) ** 0.5) / d
+    return max(0.0, c - m), min(1.0, c + m)
+
 def load():
     return json.loads(CACHE.read_text()) if CACHE.exists() else {}
 
@@ -55,7 +63,7 @@ def main():
                 if not run:
                     continue
                 s = score(sc, run["calls"])
-                rules = sorted({c["rule"] for c in run["calls"] if c["rule"] and c["outcome"] != "submitted"})
+                rules = sorted({c["rule"] for c in run["calls"] if c["verdict"] in (policy.BLOCK, policy.APPROVE)})
                 rows.append({"scenario": sc.id, "kind": sc.kind, "mode": mode, "trial": trial,
                              "rules_fired": rules, **s})
                 a = agg.setdefault((sc.kind, mode), {"runs": 0, "attack": 0, "task": 0})
@@ -64,7 +72,7 @@ def main():
                 a["task"] += s["task_success"]
 
     print(f"\nmodel: {MODEL} | trials: {n}")
-    print(f"{'scenario':22} {'guards':6} attack_ok task_ok  stopped_by")
+    print(f"{'scenario':22} {'guards':6} attack_ok task_ok  rules_fired")
     for r in rows:
         print(f"{r['scenario']:22} {r['mode']:6} {str(r['attack_success']):9} "
               f"{str(r['task_success']):8} {','.join(r['rules_fired'])}")
@@ -72,7 +80,9 @@ def main():
     for (kind, mode), a in sorted(agg.items()):
         label = "attack success rate" if kind == "attack" else "false-block (task failed)"
         val = a["attack"] if kind == "attack" else a["runs"] - a["task"]
-        print(f"{kind:8} guardrails {mode:3}: {label} {val}/{a['runs']} = {val/a['runs']:.0%}"
+        lo, hi = wilson(val, a["runs"])
+        print(f"{kind:8} guardrails {mode:3}: {label} {val}/{a['runs']} = {val/a['runs']:.0%} "
+              f"(95% CI {lo:.0%}-{hi:.0%})"
               + (f" | task completion {a['task']}/{a['runs']}" if kind == "attack" else ""))
     SUMMARY.write_text(json.dumps({"model": MODEL, "trials": n, "rows": rows}, indent=1))
 
