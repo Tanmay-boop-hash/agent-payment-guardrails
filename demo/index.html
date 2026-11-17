@@ -1,0 +1,163 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>payguard demo</title>
+<style>
+  :root { --bg:#fff; --fg:#1a1a1a; --muted:#667085; --card:#f5f6f8; --line:#dde1e6;
+          --allow:#1a7f37; --block:#cf222e; --ask:#9a6700; --accent:#0b5fff; }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg:#111418; --fg:#e8eaed; --muted:#9aa3ad; --card:#1b1f26; --line:#2d333b;
+            --allow:#3fb950; --block:#ff7b72; --ask:#e3b341; --accent:#6ea8ff; }
+  }
+  body { font:15px/1.5 system-ui,sans-serif; background:var(--bg); color:var(--fg);
+         max-width:820px; margin:2rem auto; padding:0 1rem; }
+  h1 { font-size:1.3rem; margin:0 0 .25rem; }
+  .sub { color:var(--muted); margin:0 0 1.25rem; }
+  .row { display:flex; gap:.75rem; align-items:center; flex-wrap:wrap; margin-bottom:1rem; }
+  select, button { font:inherit; padding:.4rem .7rem; border-radius:6px;
+                   border:1px solid var(--line); background:var(--card); color:var(--fg); }
+  button.primary { background:var(--accent); color:#fff; border-color:var(--accent); }
+  button:disabled { opacity:.5; }
+  pre { background:var(--card); border:1px solid var(--line); border-radius:8px;
+        padding:.75rem; white-space:pre-wrap; margin:0 0 1rem; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:8px;
+          padding:.6rem .8rem; margin-bottom:.5rem; }
+  .pending { border-color:var(--ask); }
+  .badge { font-weight:600; padding:.05rem .45rem; border-radius:4px; color:#fff; margin-right:.4rem; }
+  .allow { background:var(--allow); } .block { background:var(--block); }
+  .needs_approval { background:var(--ask); }
+  .muted { color:var(--muted); }
+  .bad { color:var(--block); font-weight:600; } .good { color:var(--allow); font-weight:600; }
+  [hidden] { display:none !important; }
+</style>
+</head>
+<body>
+<h1>payguard</h1>
+<p class="sub">A deterministic policy layer between an LLM agent's tool calls and PayPal payouts.</p>
+
+<div class="row">
+  <select id="scenario"></select>
+  <label><input type="checkbox" id="guard" checked> Guardrails ON</label>
+  <button id="run" class="primary">Run agent</button>
+  <button id="reset">Reset audit log</button>
+</div>
+
+<div class="muted">Invoice the agent will read (untrusted input):</div>
+<pre id="invoice"></pre>
+
+<div id="status" class="muted"></div>
+<div id="pending" class="card pending" hidden>
+  <div id="pending-text"></div>
+  <div class="row" style="margin:.5rem 0 0">
+    <button id="yes" class="primary">Approve</button>
+    <button id="no">Deny</button>
+  </div>
+</div>
+<div id="timeline"></div>
+<div id="summary"></div>
+
+<script>
+const $ = id => document.getElementById(id);
+// Everything below is rendered with textContent, never innerHTML: invoice text and
+// model output are untrusted, so they must not be able to inject markup into this page.
+const el = (tag, cls, text) => {
+  const e = document.createElement(tag);
+  if (cls) e.className = cls;
+  if (text !== undefined) e.textContent = text;
+  return e;
+};
+let SCEN = {}, sid = null, timer = null;
+
+async function api(path, opts) {
+  const init = opts && { method: opts.method, headers: { "content-type": "application/json" },
+                         body: JSON.stringify(opts.body) };
+  const r = await fetch(path, init);
+  if (!r.ok) throw new Error((await r.json()).detail || r.status);
+  return r.json();
+}
+
+function showInvoice() { $("invoice").textContent = SCEN[$("scenario").value].text; }
+
+async function init() {
+  const list = await api("/scenarios");
+  for (const s of list) {
+    SCEN[s.id] = s;
+    const o = el("option", "", `${s.id} (${s.kind})`);
+    o.value = s.id;
+    $("scenario").append(o);
+  }
+  showInvoice();
+}
+
+function renderEvent(e) {
+  const c = el("div", "card");
+  if (e.type === "tool_call") {
+    c.append(el("span", "muted", "Model wants  "), el("code", "", `${e.tool}(${JSON.stringify(e.args)})`));
+  } else if (e.type === "decision") {
+    c.append(el("span", `badge ${e.verdict}`, e.verdict), el("span", "", `${e.rule}: ${e.reason}`));
+  } else if (e.type === "approval") {
+    c.append(el("span", "", e.approved ? "Human approved" : "Human denied"));
+  } else if (e.type === "result") {
+    c.append(el("span", "muted", `${e.tool} → ${e.outcome}`));
+  } else if (e.type === "final") {
+    c.append(el("div", "muted", "Agent's final answer"), el("div", "", e.text));
+  }
+  return c;
+}
+
+function renderSummary(s) {
+  const box = el("div", "card");
+  box.append(el("div", s.attack_success ? "bad" : "good",
+    s.attack_success ? `Unauthorized payments executed: ${s.unauthorized}` : "No unauthorized payment executed"));
+  box.append(el("div", "", `Task completed: ${s.task_success ? "yes" : "no"}`));
+  box.append(el("div", "muted", "Paid: " + (s.paid.length
+    ? s.paid.map(p => `$${p[1]} to ${p[0]}`).join("; ") : "nothing")));
+  $("summary").replaceChildren(box);
+}
+
+async function poll() {
+  const s = await api(`/sessions/${sid}`);
+  $("status").textContent = `status: ${s.status}`;
+  $("timeline").replaceChildren(...s.events.map(renderEvent));
+  if (s.pending) {
+    $("pending-text").textContent =
+      `Approval needed: ${s.pending.tool}(${JSON.stringify(s.pending.args)}) — ${s.pending.rule}: ${s.pending.reason}`;
+    $("pending").hidden = false;
+  } else {
+    $("pending").hidden = true;
+  }
+  if (s.status === "done" || s.status === "error") {
+    clearInterval(timer);
+    $("run").disabled = false;
+    if (s.error) $("status").textContent = `error: ${s.error}`;
+    if (s.summary) renderSummary(s.summary);
+  }
+}
+
+async function run() {
+  $("run").disabled = true;
+  $("timeline").replaceChildren();
+  $("summary").replaceChildren();
+  try {
+    const s = await api("/sessions", { method: "POST",
+      body: { scenario_id: $("scenario").value, guardrails: $("guard").checked } });
+    sid = s.id;
+    timer = setInterval(poll, 700);
+  } catch (e) {
+    $("status").textContent = e.message;
+    $("run").disabled = false;
+  }
+}
+
+const answer = ok => api(`/sessions/${sid}/approve`, { method: "POST", body: { approve: ok } });
+$("run").onclick = run;
+$("yes").onclick = () => answer(true);
+$("no").onclick = () => answer(false);
+$("reset").onclick = async () => { await api("/reset", { method: "POST" }); $("status").textContent = "audit log cleared"; };
+$("scenario").onchange = showInvoice;
+init();
+</script>
+</body>
+</html>

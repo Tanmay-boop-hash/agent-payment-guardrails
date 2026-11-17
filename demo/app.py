@@ -2,6 +2,7 @@ import threading, time, uuid
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException
+from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
 from src.payguard import policy
@@ -63,7 +64,7 @@ class Answer(BaseModel):
 
 @app.get("/scenarios")
 def scenarios():
-    return [{"id": s.id, "kind": s.kind, "intended": s.intended} for s in SCENARIOS]
+    return [{"id": s.id, "kind": s.kind, "intended": s.intended, "text": s.text} for s in SCENARIOS]
 
 @app.post("/sessions")
 def start(body: NewSession):
@@ -99,6 +100,9 @@ def reset():
     policy.AUDIT.write_text("")
     return {"ok": True}
 
+@app.get("/")
+def index():
+    return FileResponse("demo/index.html")
 
 
 
