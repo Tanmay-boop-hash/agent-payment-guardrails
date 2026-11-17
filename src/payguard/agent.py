@@ -29,8 +29,8 @@ class Trace:
         return [c for c in self.calls
                 if c["tool"] == "send_payment" and c["outcome"] == "submitted"]
 
-def run_agent(prompt, *, guardrails=True, approver=deny_all, tools=None, max_rounds=8,
-              system_instruction=None, verbose=False, backend_cls=GroqBackend) -> Trace:
+def run_agent(prompt, *, guardrails=True, approver=deny_all, tools=None, max_rounds=8, system_instruction=None, verbose=False, backend_cls=GroqBackend, on_event=None) -> Trace:
+    emit = on_event or (lambda e: None)
     tools = tools or default_tools()
     llm = backend_cls(tools, system_instruction)
     llm.start(prompt)
@@ -45,12 +45,15 @@ def run_agent(prompt, *, guardrails=True, approver=deny_all, tools=None, max_rou
             return trace
         if not calls:
             trace.final_text = text
+            emit({"type": "final", "text": text})
             return trace
 
         results = []
         for call in calls:
             args = call.args
-            rec = {"tool": call.name, "args": args, "verdict": None, "rule": None, "outcome": None}
+            rec = {"tool": call.name, "args": args, "verdict": None, "rule": None,
+                   "outcome": None, "approved": None}
+            emit({"type": "tool_call", "tool": call.name, "args": args})
             if verbose:
                 print(f"[MODEL WANTS] {call.name}({args})")
 
@@ -58,19 +61,25 @@ def run_agent(prompt, *, guardrails=True, approver=deny_all, tools=None, max_rou
                 result = {"status": "error", "detail": "unknown tool"}
                 rec["outcome"] = "unknown_tool"
             else:
-                d = None
+                d, proceed = None, True
                 if guardrails:
                     d = policy.check(call.name, args)
                     rec["verdict"], rec["rule"] = d.verdict, d.rule
+                    emit({"type": "decision", "verdict": d.verdict,
+                          "rule": d.rule, "reason": d.reason})
                     if verbose:
                         print(f"[GUARDRAIL] {d.verdict} ({d.rule}): {d.reason}")
                 if d and d.verdict == policy.BLOCK:
-                    result = {"status": "blocked", "reason": d.reason}
-                    rec["outcome"] = "blocked"
-                elif d and d.verdict == policy.APPROVE and not approver(call.name, args, d):
-                    result = {"status": "denied_by_human", "reason": d.reason}
-                    rec["outcome"] = "denied_by_human"
-                else:
+                    result, rec["outcome"], proceed = (
+                        {"status": "blocked", "reason": d.reason}, "blocked", False)
+                elif d and d.verdict == policy.APPROVE:
+                    rec["approved"] = bool(approver(call.name, args, d))
+                    emit({"type": "approval", "approved": rec["approved"]})
+                    if not rec["approved"]:
+                        result, rec["outcome"], proceed = (
+                            {"status": "denied_by_human", "reason": d.reason},
+                            "denied_by_human", False)
+                if proceed:
                     try:
                         result = tools[call.name](**args)
                     except Exception as e:
@@ -79,6 +88,7 @@ def run_agent(prompt, *, guardrails=True, approver=deny_all, tools=None, max_rou
                     if (guardrails and call.name == "send_payment"
                             and result.get("status") == "submitted"):
                         policy.record_executed(args["recipient"], args["amount"])
+            emit({"type": "result", "tool": call.name, "outcome": rec["outcome"]})
             if verbose:
                 print(f"[RESULT] {result}")
             trace.calls.append(rec)
