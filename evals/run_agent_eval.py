@@ -7,17 +7,10 @@ from src.payguard.agent import run_agent
 from src.payguard.llm import MODEL, DailyQuotaExceeded
 from evals.cases.injection_scenarios import SCENARIOS, SYSTEM
 from evals.fake_tools import make_tools, make_oracle, score
+from evals.stats import wilson
 
 CACHE = Path("evals/results/agent_runs.json")
 SUMMARY = Path("evals/results/summary.json")
-
-def wilson(k, n, z=1.96):
-    if n == 0:
-        return 0.0, 0.0
-    p, d = k / n, 1 + z * z / n
-    c = (p + z * z / (2 * n)) / d
-    m = z * ((p * (1 - p) / n + z * z / (4 * n * n)) ** 0.5) / d
-    return max(0.0, c - m), min(1.0, c + m)
 
 def load():
     return json.loads(CACHE.read_text()) if CACHE.exists() else {}

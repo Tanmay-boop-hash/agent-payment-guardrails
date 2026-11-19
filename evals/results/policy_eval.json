@@ -1,0 +1,9 @@
+{
+ "attack_cases": 20,
+ "stopped": 20,
+ "legit_cases": 14,
+ "false_block": 0,
+ "approval_prompts": 2,
+ "latency_p50_ms": 0.03370799822732806,
+ "latency_p95_ms": 0.08833300671540201
+}

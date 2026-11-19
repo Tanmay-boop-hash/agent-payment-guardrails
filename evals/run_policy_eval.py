@@ -1,4 +1,4 @@
-import tempfile, time, statistics
+import tempfile, time, statistics, json
 from pathlib import Path
 from src.payguard import policy
 from evals.cases.policy_cases import CASES, seed_audit
@@ -19,8 +19,14 @@ false_block = sum(d.verdict == policy.BLOCK for _, d, _ in legit)
 prompted    = sum(d.verdict == policy.APPROVE for _, d, _ in legit)
 lat = sorted(ms for *_, ms in rows)
 
-print(f"attack cases: {len(attacks)} | stopped: {stopped} ({stopped/len(attacks):.0%}) | "
-      f"unguarded would have executed: {len(attacks)}")
+print(f"attack cases: {len(attacks)} | stopped: {stopped} ({stopped/len(attacks):.0%})")
 print(f"legit cases:  {len(legit)} | false-block: {false_block} ({false_block/len(legit):.0%}) | "
       f"approval prompts: {prompted}")
 print(f"policy latency: p50 {statistics.median(lat):.2f} ms | p95 {lat[int(len(lat)*.95)-1]:.2f} ms")
+
+Path("evals/results").mkdir(parents=True, exist_ok=True)
+Path("evals/results/policy_eval.json").write_text(json.dumps({
+    "attack_cases": len(attacks), "stopped": stopped,
+    "legit_cases": len(legit), "false_block": false_block, "approval_prompts": prompted,
+    "latency_p50_ms": statistics.median(lat),
+    "latency_p95_ms": lat[int(len(lat) * .95) - 1]}, indent=1))

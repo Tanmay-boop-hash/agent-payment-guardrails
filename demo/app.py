@@ -1,4 +1,4 @@
-import threading, time, uuid
+import threading, time, uuid, json
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException
@@ -10,6 +10,7 @@ from src.payguard.agent import run_agent
 from src.payguard.llm import DailyQuotaExceeded
 from evals.cases.injection_scenarios import SCENARIOS, SYSTEM
 from evals.fake_tools import make_tools, score
+from evals.aggregate import build
 
 policy.AUDIT = Path("demo/demo_audit.jsonl")   # demo has its own audit log
 APPROVAL_TIMEOUT_S = 300
@@ -103,6 +104,17 @@ def reset():
 @app.get("/")
 def index():
     return FileResponse("demo/index.html")
+
+@app.get("/api/results")
+def api_results():
+    p = Path("evals/results/policy_eval.json")
+    return {"agent": build(), "policy": json.loads(p.read_text()) if p.exists() else None}
+
+@app.get("/results")
+def results_page():
+    return FileResponse("demo/results.html")
+
+
 
 
 
