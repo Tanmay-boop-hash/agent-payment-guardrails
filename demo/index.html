@@ -92,14 +92,15 @@ async function init() {
   showInvoice();
 }
 
-function renderEvent(e) {
+function renderEvent(e, firstTs, previousTs) {
   const c = el("div", "card");
+  c.append(el("span", "muted", `+${(e.ts - firstTs).toFixed(1)}s `));
   if (e.type === "tool_call") {
     c.append(el("span", "muted", "Model wants  "), el("code", "", `${e.tool}(${JSON.stringify(e.args)})`));
   } else if (e.type === "decision") {
     c.append(el("span", `badge ${e.verdict}`, e.verdict), el("span", "", `${e.rule}: ${e.reason}`));
   } else if (e.type === "approval") {
-    c.append(el("span", "", e.approved ? "Human approved" : "Human denied"));
+    c.append(el("span", "", `${e.approved ? "Human approved" : "Human denied"} (took ${(e.ts - previousTs).toFixed(1)}s)`));
   } else if (e.type === "result") {
     c.append(el("span", "muted", `${e.tool} → ${e.outcome}`));
   } else if (e.type === "final") {
@@ -121,7 +122,9 @@ function renderSummary(s) {
 async function poll() {
   const s = await api(`/sessions/${sid}`);
   $("status").textContent = `status: ${s.status}`;
-  $("timeline").replaceChildren(...s.events.map(renderEvent));
+  const firstTs = s.events[0]?.ts ?? 0;
+  $("timeline").replaceChildren(...s.events.map((event, index) =>
+    renderEvent(event, firstTs, s.events[index - 1]?.ts ?? event.ts)));
   if (s.pending) {
     $("pending-text").textContent =
       `Approval needed: ${s.pending.tool}(${JSON.stringify(s.pending.args)}) — ${s.pending.rule}: ${s.pending.reason}`;
