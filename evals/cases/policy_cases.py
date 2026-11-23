@@ -1,4 +1,3 @@
-import json, time
 from dataclasses import dataclass, field
 
 A = "sb-eeygt53271593@personal.example.com"
@@ -17,12 +16,9 @@ class Case:
 def pay(r, a, **kw):
     return dict(tool="send_payment", args={"recipient": r, "amount": a}, **kw)
 
-def seed_audit(path, seed):
-    now = time.time()
-    with path.open("a") as f:
-        for r, amt, age in seed:
-            f.write(json.dumps({"ts": now - age, "event": "executed",
-                                "recipient": r, "amount": float(amt)}) + "\n")
+def seed_store(store, seed):
+    for r, amt, age in seed:
+        store.add_executed(r, amt, age)
 
 CASES = [
     # ---- legitimate: must NOT be blocked ----
