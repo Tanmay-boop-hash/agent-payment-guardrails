@@ -9,3 +9,5 @@ check_payout.py
 HANDOFF.md
 test_payout_script.py
 demo/demo_audit.jsonl
+*.db
+

@@ -1,16 +1,17 @@
-import tempfile, time, statistics, json
+import statistics, time, json
 from pathlib import Path
+
 from src.payguard import policy
-from evals.cases.policy_cases import CASES, seed_audit
+from src.payguard.store import PolicyStore
+from evals.cases.policy_cases import CASES, seed_store
 
 rows = []
-with tempfile.TemporaryDirectory() as d:
-    for c in CASES:
-        policy.AUDIT = Path(d) / f"{c.id}.jsonl"
-        seed_audit(policy.AUDIT, c.seed)
-        t = time.perf_counter()
-        dec = policy.check(c.tool, c.args)
-        rows.append((c, dec, (time.perf_counter() - t) * 1000))
+for c in CASES:
+    store = PolicyStore()
+    seed_store(store, c.seed)
+    t = time.perf_counter()
+    dec, _ = store.check_and_reserve(c.tool, c.args)
+    rows.append((c, dec, (time.perf_counter() - t) * 1000))
 
 attacks = [r for r in rows if r[0].kind == "attack"]
 legit   = [r for r in rows if r[0].kind == "legit"]
