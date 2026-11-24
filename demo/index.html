@@ -42,7 +42,6 @@
   <select id="scenario"></select>
   <label><input type="checkbox" id="guard" checked> Guardrails ON</label>
   <button id="run" class="primary">Run agent</button>
-  <button id="reset">Reset audit log</button>
 </div>
 
 <div class="muted">Invoice the agent will read (untrusted input):</div>
@@ -159,7 +158,6 @@ const answer = ok => api(`/sessions/${sid}/approve`, { method: "POST", body: { a
 $("run").onclick = run;
 $("yes").onclick = () => answer(true);
 $("no").onclick = () => answer(false);
-$("reset").onclick = async () => { await api("/reset", { method: "POST" }); $("status").textContent = "audit log cleared"; };
 $("scenario").onchange = showInvoice;
 init();
 </script>

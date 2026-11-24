@@ -2,6 +2,7 @@ import sys
 from dataclasses import dataclass, field
 
 from . import policy
+from .store import PolicyStore
 from .llm import GroqBackend, MODEL, DailyQuotaExceeded, ModelCallFailed
 
 def default_tools() -> dict:
@@ -29,9 +30,10 @@ class Trace:
         return [c for c in self.calls
                 if c["tool"] == "send_payment" and c["outcome"] == "submitted"]
 
-def run_agent(prompt, *, guardrails=True, approver=deny_all, tools=None, max_rounds=8, system_instruction=None, verbose=False, backend_cls=GroqBackend, on_event=None) -> Trace:
+def run_agent(prompt, *, guardrails=True, approver=deny_all, tools=None, max_rounds=8, system_instruction=None, verbose=False, backend_cls=GroqBackend, on_event=None, store=None, session=None) -> Trace:
     emit = on_event or (lambda e: None)
     tools = tools or default_tools()
+    store = store or PolicyStore()
     llm = backend_cls(tools, system_instruction)
     llm.start(prompt)
     trace = Trace(prompt=prompt, guardrails=guardrails)
@@ -61,9 +63,9 @@ def run_agent(prompt, *, guardrails=True, approver=deny_all, tools=None, max_rou
                 result = {"status": "error", "detail": "unknown tool"}
                 rec["outcome"] = "unknown_tool"
             else:
-                d, proceed = None, True
+                d, rid, proceed = None, None, True
                 if guardrails:
-                    d = policy.check(call.name, args)
+                    d, rid = store.check_and_reserve(call.name, args, session)
                     rec["verdict"], rec["rule"] = d.verdict, d.rule
                     emit({"type": "decision", "verdict": d.verdict,
                           "rule": d.rule, "reason": d.reason})
@@ -79,15 +81,25 @@ def run_agent(prompt, *, guardrails=True, approver=deny_all, tools=None, max_rou
                         result, rec["outcome"], proceed = (
                             {"status": "denied_by_human", "reason": d.reason},
                             "denied_by_human", False)
+                    else:
+                        d2, rid = store.reserve_approved(call.name, args, session)
+                        if d2.verdict == policy.BLOCK:      # the world changed while the human decided
+                            rec["verdict"], rec["rule"] = d2.verdict, d2.rule
+                            emit({"type": "decision", "verdict": d2.verdict,
+                                  "rule": d2.rule, "reason": d2.reason})
+                            result, rec["outcome"], proceed = (
+                                {"status": "blocked", "reason": d2.reason}, "blocked", False)
                 if proceed:
                     try:
                         result = tools[call.name](**args)
                     except Exception as e:
                         result = {"status": "error", "detail": str(e)}
                     rec["outcome"] = result.get("status")
-                    if (guardrails and call.name == "send_payment"
-                            and result.get("status") == "submitted"):
-                        policy.record_executed(args["recipient"], args["amount"])
+                    if rid is not None:
+                        if result.get("status") == "submitted":
+                            store.commit(rid)
+                        else:
+                            store.release(rid)
             emit({"type": "result", "tool": call.name, "outcome": rec["outcome"]})
             if verbose:
                 print(f"[RESULT] {result}")
@@ -104,7 +116,8 @@ if __name__ == "__main__":
     print(f"[MODE] guardrails {'ON' if guard else 'OFF'} | model {MODEL}")
     try:
         t = run_agent(" ".join(argv) or "Check my balance.", guardrails=guard,
-                      approver=cli_approver, verbose=True)
+                      approver=cli_approver, verbose=True,
+                      store=PolicyStore("payguard.db"))
     except DailyQuotaExceeded as e:
         sys.exit(f"Daily quota exhausted for {MODEL}.\n{e}")
     print("\n[FINAL]", t.final_text)
