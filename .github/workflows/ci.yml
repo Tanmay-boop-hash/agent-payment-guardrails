@@ -1,0 +1,31 @@
+name: ci
+on:
+  push:
+    branches: [main]
+  pull_request:
+permissions:
+  contents: read
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python: ["3.11", "3.12"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+          cache: pip
+      - run: pip install -r requirements-dev.txt ruff
+      - run: ruff check --select E9,F src tests evals demo
+      - run: pytest -q
+      - run: python -m evals.run_policy_eval
+      - name: Published results match the cached runs
+        if: matrix.python == '3.12'
+        run: |
+          python -m evals.aggregate
+          git diff --exit-code evals/results/results.json

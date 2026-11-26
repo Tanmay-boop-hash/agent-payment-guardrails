@@ -4,6 +4,6 @@
  "legit_cases": 14,
  "false_block": 0,
  "approval_prompts": 2,
- "latency_p50_ms": 0.01389599492540583,
- "latency_p95_ms": 0.02458400558680296
+ "latency_p50_ms": 0.013416502042673528,
+ "latency_p95_ms": 0.024833003408275545
 }
